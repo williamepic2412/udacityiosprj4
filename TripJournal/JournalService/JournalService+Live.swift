@@ -369,6 +369,11 @@ class JournalServiceLive: JournalService {
         
         fatalError("Event deletion failed: Event not found")
     }
+    
+    enum MediaError: Error {
+        case mediaNotFound
+        case mediaNotDeleted
+    }
 
     // MARK: - Media Methods
     func createMedia(with request: MediaCreate) async throws -> Media {
@@ -378,39 +383,43 @@ class JournalServiceLive: JournalService {
         
         do {
             let decodedMedia = try JSONDecoder().decode(Media.self, from: data)
-            
+            var mediaCreated = false
             for tripIndex in trips.indices {
                 for eventIndex in trips[tripIndex].events.indices {
-                    if trips[tripIndex].events[eventIndex].medias.firstIndex(where: { $0.id == request.eventId }) != nil {
-                        trips[tripIndex].events[eventIndex].medias.append(decodedMedia)
-                        return decodedMedia
-                    }
+                    print("Checking event \(trips[tripIndex].events[eventIndex].id) against requested eventId \(request.eventId)")
+                    trips[tripIndex].events[eventIndex].medias.append(decodedMedia)
+                    mediaCreated = true
+                    return decodedMedia
                 }
+            }
+            if !mediaCreated {
+                throw MediaError.mediaNotFound
             }
         } catch {
             print("Decoding error while creating media: \(error.localizedDescription)")
             throw error
         }
-        
-        fatalError("Create media failed: Media not found")
     }
 
     func deleteMedia(withId mediaId: Media.ID) async throws {
         
         let (_, response) = try await implementRequest(dataToEncode: Data(), httpMethod: "DELETE", domain: "media", path: "\(mediaId)")
         print("Delete media response: \(response)")
-        
+        var mediaDeleted = false
         for tripIndex in trips.indices {
             for eventIndex in trips[tripIndex].events.indices {
                 if let mediaIndex = trips[tripIndex].events[eventIndex].medias.firstIndex(where: { $0.id == mediaId }) {
                     trips[tripIndex].events[eventIndex].medias.remove(at: mediaIndex)
                     print("Media with ID \(mediaId) deleted.")
+                    mediaDeleted = true
                     return
                 }
             }
         }
         
-        fatalError("Media deletion failed: Media not found")
+        if !mediaDeleted {
+            throw MediaError.mediaNotDeleted
+        }
     }
 }
 
